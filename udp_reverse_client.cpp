@@ -1,54 +1,55 @@
-#include <arpa/inet.h>
-#include <cstring>
-#include <iostream>
-#include <netinet/in.h>
-#include <sys/socket.h>
+#include <stdio.h>
+#include <string.h>
 #include <unistd.h>
-
-const int PORT = 5000;
-const int BUFFER_SIZE = 1024;
+#include <arpa/inet.h>
+#include <sys/socket.h>
 
 int main() {
-    int clientSocket = socket(AF_INET, SOCK_DGRAM, 0);
+    int sockfd;
+    char buffer[1024];
+    struct sockaddr_in server_addr;
+    socklen_t len = sizeof(server_addr);
 
-    if (clientSocket < 0) {
-        std::cerr << "Socket creation failed.\n";
+    sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+
+    if (sockfd < 0) {
+        perror("Socket creation failed");
         return 1;
     }
 
-    sockaddr_in serverAddress{};
-    serverAddress.sin_family = AF_INET;
-    serverAddress.sin_port = htons(PORT);
-    inet_pton(AF_INET, "127.0.0.1", &serverAddress.sin_addr);
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(12345);
+    server_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
 
-    std::string message;
+    while (1) {
+        printf("Enter a string (exit to quit): ");
+        fgets(buffer, sizeof(buffer), stdin);
 
-    std::cout << "Enter a string: ";
-    std::getline(std::cin, message);
+        buffer[strcspn(buffer, "\n")] = '\0';
 
-    sendto(clientSocket, message.c_str(), message.length(), 0,
-           reinterpret_cast<sockaddr*>(&serverAddress),
-           sizeof(serverAddress));
+        sendto(sockfd, buffer, strlen(buffer), 0,
+               (struct sockaddr *)&server_addr, len);
 
-    char buffer[BUFFER_SIZE];
-    sockaddr_in fromAddress{};
-    socklen_t addressLength = sizeof(fromAddress);
+        memset(buffer, 0, sizeof(buffer));
 
-    int bytesReceived = recvfrom(
-        clientSocket, buffer, BUFFER_SIZE - 1, 0,
-        reinterpret_cast<sockaddr*>(&fromAddress), &addressLength);
+        int n = recvfrom(sockfd, buffer, sizeof(buffer) - 1, 0,
+                         NULL, NULL);
 
-    if (bytesReceived < 0) {
-        std::cerr << "Reply receiving failed.\n";
-        close(clientSocket);
-        return 1;
+        if (n < 0) {
+            perror("Receive failed");
+            break;
+        }
+
+        buffer[n] = '\0';
+        printf("Server response: %s\n", buffer);
+
+        if (strcmp(buffer, "Server disconnected.") == 0) {
+            break;
+        }
     }
 
-    buffer[bytesReceived] = '\0';
+    close(sockfd);
+    printf("Client socket closed.\n");
 
-    std::cout << "Reversed string received from server: "
-              << buffer << '\n';
-
-    close(clientSocket);
     return 0;
 }
